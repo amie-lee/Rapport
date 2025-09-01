@@ -5,6 +5,25 @@ const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 type Message = { role: "user" | "bot"; text: string };
 
+function Bar({ value }: { value: number }) {
+  return (
+    <div className="w-full h-2 bg-gray-200 rounded">
+      <div
+        className="h-2 rounded"
+        style={{
+          width: `${value}%`,
+          background:
+            value >= 70
+              ? "#ef4444"
+              : value >= 40
+              ? "#f59e0b"
+              : "#10b981",
+        }}
+      />
+    </div>
+  );
+}
+
 export default function Home() {
   // ----- state -----
   const [consented, setConsented] = useState(false);
@@ -164,21 +183,28 @@ export default function Home() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">사전 점검 리포트</h2>
 
-          <div className="border rounded p-4 bg-white text-sm">
+          <div className="border rounded p-4 bg-white text-sm space-y-3">
             <div className="mb-2">
               핵심 이슈: {report.summary.top_issues?.join(", ") || "없음"}
             </div>
-            <div className="mb-2">
-              지표(0–100): 우울 {report.summary.scores.depression} · 불안{" "}
-              {report.summary.scores.anxiety} · 스트레스{" "}
-              {report.summary.scores.stress}
-            </div>
+
+            <div className="mb-1">우울 {report.summary.scores.depression}</div>
+            <Bar value={report.summary.scores.depression} />
+            <div className="mb-1 mt-2">불안 {report.summary.scores.anxiety}</div>
+            <Bar value={report.summary.scores.anxiety} />
+            <div className="mb-1 mt-2">스트레스 {report.summary.scores.stress}</div>
+            <Bar value={report.summary.scores.stress} />
+
             {report.summary.risk.level >= 60 && (
-              <div className="mb-2 text-red-600">
-                위험 신호 감지(레벨 {report.summary.risk.level}).{" "}
+              <div className={`mt-4 p-3 rounded text-sm ${
+                report.summary.risk.level >= 80 
+                  ? 'bg-red-100 text-red-700' 
+                  : 'bg-amber-100 text-amber-700'}`}>
+                {report.summary.risk.level >= 80 ? '고위험 신호가 감지되었습니다. ' : '주의가 필요한 신호가 감지되었습니다. '}
                 {report.safety_notice}
               </div>
             )}
+
             {report.details.highlights?.length > 0 && (
               <div className="mb-2">
                 <div className="font-medium">대화 하이라이트</div>
@@ -192,10 +218,31 @@ export default function Home() {
             <div className="text-gray-500">{report.details.disclaimer}</div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             <button onClick={resetAll} className="border rounded px-4 py-2">
               처음 화면으로
             </button>
+            {/* <button
+              onClick={() => {
+                const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'rapport_report.json'; a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="border rounded px-4 py-2"
+            >
+              리포트 저장(JSON)
+            </button> */}
+          </div>
+
+          <div className="mt-4 border-t pt-3 text-sm">
+            <div className="font-medium mb-1">연결 가능한 도움</div>
+            <p className="text-gray-600 mb-2">거주 지역의 정신건강복지센터/상담기관 정보를 제공할 예정입니다.</p>
+            <div className="flex gap-2">
+              <a className="border px-3 py-1 rounded" target="_blank" href="https://www.data.go.kr/data/3049990/fileData.do" rel="noreferrer">기관 검색(공공데이터)</a>
+              <a className="border px-3 py-1 rounded" href="tel:1393">1393 전화하기</a>
+            </div>
           </div>
         </div>
       )}

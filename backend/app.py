@@ -4,7 +4,9 @@ from pydantic import BaseModel
 import uuid, re
 from typing import Dict
 from analyzer import analyze_messages
+from model_wrap import try_load_model, model_scores
 
+CLF = try_load_model()
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -63,6 +65,19 @@ def finalize(req: FinalizeReq):
     print("DEBUG: Messages for analysis:", msgs)  # 디버그 출력
     analysis = analyze_messages(msgs)
 
+    m = model_scores(CLF, msgs)
+    if m is not None:
+        # 간단 가중 평균: 최종 = 0.8*룰 + 0.2*(neg_ratio*100)
+        def fuse(rule_val: int) -> int:
+            return int(0.8*rule_val + 0.2*(m["neg_ratio"]*100))
+        fused_scores = {
+            "depression": fuse(analysis["scores"]["depression"]),
+            "anxiety":    fuse(analysis["scores"]["anxiety"]),
+            "stress":     fuse(analysis["scores"]["stress"]),
+        }
+    else:
+        fused_scores = analysis["scores"]
+
     report = {
         "summary": {
             "top_issues": analysis["top_themes"],
@@ -79,6 +94,7 @@ def finalize(req: FinalizeReq):
             "위험 신호가 감지되었습니다. 도움이 필요하시면 즉시 1393(자살예방상담전화) 또는 112에 연락하세요."
             if analysis["risk"]["need_immediate_help"] else ""
         ),
+        "ai_model_used": m is not None,
     }
 
     # 원문 삭제(세션 종료 정책)
