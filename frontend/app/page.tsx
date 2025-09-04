@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -24,6 +24,18 @@ function Bar({ value }: { value: number }) {
   );
 }
 
+function TypingBubble() {
+  return (
+    <div className="text-left">
+      <span className="inline-flex items-center gap-1 px-3 py-2 rounded bg-gray-100">
+        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "0ms" }} />
+        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "150ms" }} />
+        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "300ms" }} />
+      </span>
+    </div>
+  );
+}
+
 export default function Home() {
   // ----- state -----
   const [consented, setConsented] = useState(false);
@@ -32,7 +44,38 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [report, setReport] = useState<any | null>(null);
+  const [botTyping, setBotTyping] = useState(false);
+  const [autoStick, setAutoStick] = useState(true);
+  
+  const endRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  
+  function scrollToBottom(smooth = true) {
+    endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+  }
+  function handleScroll() {
+    const el = listRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setAutoStick(distanceFromBottom < 80);  // 80px 이내면 자동 스크롤 유지
+  }
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
 
+  useEffect(() => {
+    scrollToBottom(true);
+  }, [messages, botTyping]);
+
+  // 첫 렌더에서는 점프(부드러운 스크롤 X)
+  useEffect(() => {
+    scrollToBottom(false);
+  }, []);
+
+  
   // ----- handlers -----
   async function startSession() {
     try {
@@ -54,17 +97,28 @@ export default function Home() {
 
   async function sendMessage() {
     if (!input.trim() || !sessionId) return;
-    const userMsg: Message = { role: "user", text: input };
+
+    const userText = input;
+    setInput(""); 
+    const userMsg: Message = { role: "user", text: userText };
     setMessages((prev) => [...prev, userMsg]);
+
     try {
-      await fetch(`${API}/chat`, {
+      setBotTyping(true);
+      const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, text: input }),
       });
-      setInput("");
-    } catch {
+      const data = await res.json();
+
+      // ⬇️ 봇 응답 추가
+      const botMsg: Message = { role: "bot", text: data.assistant };
+      setMessages((prev) => [...prev, botMsg]);
+    } catch(e) {
       alert("메시지 전송 오류");
+    } finally {
+      setBotTyping(false);
     }
   }
 
@@ -126,7 +180,7 @@ export default function Home() {
         <>
           <h1 className="text-xl font-semibold">라포 · 텍스트 대화</h1>
 
-          <div className="border rounded p-4 h-96 overflow-y-auto space-y-2 bg-white">
+          <div className="border rounded p-4 h-96 overflow-y-auto space-y-2 bg-white" ref={listRef}>
             {messages.map((m, i) => (
               <div
                 key={i}
@@ -143,6 +197,8 @@ export default function Home() {
                 </span>
               </div>
             ))}
+            {botTyping && <TypingBubble />}
+            <div ref={endRef} />
           </div>
 
           <form
@@ -157,10 +213,12 @@ export default function Home() {
               placeholder="요즘 어떤 점이 가장 힘드셨나요?"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              disabled={botTyping}
             />
             <button
               type="submit"
               className="bg-black text-white rounded px-4"
+              disabled={botTyping}
             >
               전송
             </button>
