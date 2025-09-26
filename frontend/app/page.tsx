@@ -5,19 +5,33 @@ const API = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 type Message = { role: "user" | "bot"; text: string };
 
-function Bar({ value }: { value: number }) {
+type ReportData = {
+  summary: {
+    conversation_summary?: string;
+    top_issues?: string[];
+    scores: {
+      depression: number;
+      anxiety: number;
+      stress: number;
+    };
+    risk: {
+      level: number;
+    };
+  };
+  details: {
+    highlights?: string[];
+    disclaimer: string;
+  };
+  safety_notice: string;
+};
+
+function Bar({ value, type }: { value: number; type: 'depression' | 'anxiety' | 'stress' }) {
   return (
-    <div className="w-full h-2 bg-gray-200 rounded">
+    <div className="metric-bar">
       <div
-        className="h-2 rounded"
+        className={`metric-bar-fill ${type}`}
         style={{
           width: `${value}%`,
-          background:
-            value >= 70
-              ? "#ef4444"
-              : value >= 40
-              ? "#f59e0b"
-              : "#10b981",
         }}
       />
     </div>
@@ -26,12 +40,14 @@ function Bar({ value }: { value: number }) {
 
 function TypingBubble() {
   return (
-    <div className="text-left">
-      <span className="inline-flex items-center gap-1 px-3 py-2 rounded bg-gray-100">
-        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "0ms" }} />
-        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "150ms" }} />
-        <span className="w-2 h-2 rounded-full bg-gray-400 animate-pulse" style={{ animationDelay: "300ms" }} />
-      </span>
+    <div className="message bot">
+      <div className="typing">
+        <div className="typing-dots">
+          <div className="typing-dot"></div>
+          <div className="typing-dot"></div>
+          <div className="typing-dot"></div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -41,11 +57,15 @@ export default function Home() {
   const [consented, setConsented] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [region, setRegion] = useState("");
+  const [occupation, setOccupation] = useState("");
+  const [gender, setGender] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [report, setReport] = useState<any | null>(null);
+  const [report, setReport] = useState<ReportData | null>(null);
   const [botTyping, setBotTyping] = useState(false);
-  const [autoStick, setAutoStick] = useState(true);
+  const [messageCount, setMessageCount] = useState(0);
+  const [progressPercentage, setProgressPercentage] = useState(0);
   
   const endRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -53,18 +73,6 @@ export default function Home() {
   function scrollToBottom(smooth = true) {
     endRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   }
-  function handleScroll() {
-    const el = listRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    setAutoStick(distanceFromBottom < 80);  // 80px 이내면 자동 스크롤 유지
-  }
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", handleScroll);
-    return () => el.removeEventListener("scroll", handleScroll);
-  }, []);
 
   useEffect(() => {
     scrollToBottom(true);
@@ -82,7 +90,13 @@ export default function Home() {
       const res = await fetch(`${API}/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ consent: true, region }),
+        body: JSON.stringify({
+          consent: true,
+          region,
+          occupation,
+          gender,
+          ageGroup
+        }),
       });
       if (!res.ok) throw new Error("세션 생성 실패");
       const data = await res.json();
@@ -90,8 +104,9 @@ export default function Home() {
       setConsented(true);
       setReport(null);
       setMessages([]);
-    } catch (e: any) {
-      alert(e.message || "세션 생성 중 오류");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "세션 생성 중 오류";
+      alert(errorMessage);
     }
   }
 
@@ -99,23 +114,28 @@ export default function Home() {
     if (!input.trim() || !sessionId) return;
 
     const userText = input;
-    setInput(""); 
+    setInput("");
     const userMsg: Message = { role: "user", text: userText };
     setMessages((prev) => [...prev, userMsg]);
+
+    // Update progress
+    const newMessageCount = messageCount + 1;
+    setMessageCount(newMessageCount);
+    setProgressPercentage(Math.min((newMessageCount / 10) * 100, 100));
 
     try {
       setBotTyping(true);
       const res = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, text: input }),
+        body: JSON.stringify({ session_id: sessionId, text: userText }),
       });
       const data = await res.json();
 
       // ⬇️ 봇 응답 추가
       const botMsg: Message = { role: "bot", text: data.assistant };
       setMessages((prev) => [...prev, botMsg]);
-    } catch(e) {
+    } catch {
       alert("메시지 전송 오류");
     } finally {
       setBotTyping(false);
@@ -142,168 +162,313 @@ export default function Home() {
     setSessionId(null);
     setMessages([]);
     setRegion("");
+    setOccupation("");
+    setGender("");
+    setAgeGroup("");
     setConsented(false);
     setInput("");
+    setMessageCount(0);
+    setProgressPercentage(0);
   }
+
+  // Auto-resize textarea
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
   // ----- screens -----
   if (!consented) {
     return (
-      <main className="p-6 max-w-xl mx-auto space-y-6">
-        <h1 className="text-2xl font-semibold">라포: 사전 점검 동의</h1>
-        <p className="text-sm text-gray-600">
-          라포는 상담 전 <b>사전 점검</b>을 위한 텍스트 대화 도구입니다.
-          대화 원문은 세션 종료 시 삭제되며, 본 리포트는 진단·치료가 아닙니다.
-        </p>
-        <div className="space-y-2">
-          <label className="text-sm">지역(선택, 시/구 텍스트)</label>
-          <input
-            className="border rounded p-2 w-full"
-            placeholder="예: 서울 강남구"
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-          />
+      <div className="consent-container">
+        <div className="header">
+          <div className="logo">라포</div>
+          <div className="subtitle">AI 기반 심리 상태 사전 점검</div>
         </div>
-        <button
-          onClick={startSession}
-          className="bg-black text-white rounded px-4 py-2"
-        >
-          동의하고 시작하기
-        </button>
-      </main>
+        <div className="consent-card">
+          <h1 className="consent-title">사전 점검 동의</h1>
+          <p className="consent-description">
+            라포는 상담 전 <strong>사전 점검</strong>을 위한 텍스트 대화 도구입니다.
+            대화 원문은 세션 종료 시 삭제되며, 본 리포트는 진단·치료가 아닙니다.
+          </p>
+          <div className="form-group">
+            <label className="form-label">성별 <span className="required">*</span></label>
+            <select
+              className="form-input"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              required
+            >
+              <option value="">선택하세요</option>
+              <option value="남성">남성</option>
+              <option value="여성">여성</option>
+              <option value="기타">기타</option>
+              <option value="선택안함">선택하지 않음</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">연령대 <span className="required">*</span></label>
+            <select
+              className="form-input"
+              value={ageGroup}
+              onChange={(e) => setAgeGroup(e.target.value)}
+              required
+            >
+              <option value="">선택하세요</option>
+              <option value="10대">10대</option>
+              <option value="20대">20대</option>
+              <option value="30대">30대</option>
+              <option value="40대">40대</option>
+              <option value="50대">50대</option>
+              <option value="60대 이상">60대 이상</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">직업 <span className="required">*</span></label>
+            <select
+              className="form-input"
+              value={occupation}
+              onChange={(e) => setOccupation(e.target.value)}
+              required
+            >
+              <option value="">선택하세요</option>
+              <option value="학생">학생</option>
+              <option value="직장인">직장인</option>
+              <option value="자영업">자영업</option>
+              <option value="전문직">전문직 (의사, 변호사, 교수 등)</option>
+              <option value="공무원">공무원</option>
+              <option value="프리랜서">프리랜서</option>
+              <option value="주부">주부</option>
+              <option value="무직">무직</option>
+              <option value="기타">기타</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">지역 (선택)</label>
+            <input
+              className="form-input"
+              placeholder="예: 서울 강남구"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={startSession}
+            className="consent-button"
+            disabled={!gender || !ageGroup || !occupation}
+          >
+            동의하고 시작하기
+          </button>
+        </div>
+      </div>
     );
   }
 
   return (
-    <main className="p-6 max-w-xl mx-auto space-y-4">
+    <div className="container">
       {!report && (
         <>
-          <h1 className="text-xl font-semibold">라포 · 텍스트 대화</h1>
-
-          <div className="border rounded p-4 h-96 overflow-y-auto space-y-2 bg-white" ref={listRef}>
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={m.role === "user" ? "text-right" : "text-left"}
-              >
-                <span
-                  className={`inline-block px-3 py-2 rounded ${
-                    m.role === "user"
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100"
-                  }`}
-                >
-                  {m.text}
-                </span>
-              </div>
-            ))}
-            {botTyping && <TypingBubble />}
-            <div ref={endRef} />
+          <div className="header">
+            <div className="logo">라포</div>
+            <div className="subtitle">AI 기반 심리 상태 사전 점검</div>
           </div>
 
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              sendMessage();
-            }}
-          >
-            <input
-              className="flex-1 border rounded p-2"
-              placeholder="요즘 어떤 점이 가장 힘드셨나요?"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={botTyping}
-            />
-            <button
-              type="submit"
-              className="bg-black text-white rounded px-4"
-              disabled={botTyping}
-            >
-              전송
-            </button>
-            <button
-              type="button"
-              onClick={finalize}
-              className="border rounded px-4"
-            >
-              종료
-            </button>
-          </form>
+          <div className="chat-card chat-mode">
+            <div className="progress-container">
+              <div className="progress-label">
+                <span>진행 상황</span>
+                <span>{messageCount}/10 질문</span>
+              </div>
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${progressPercentage}%` }}></div>
+              </div>
+            </div>
 
-          <p className="text-xs text-gray-500">
-            * 서버는 입력을 마스킹하여 저장하며, 세션 종료 시 원문은 삭제됩니다.
-          </p>
+            <div className="messages" ref={listRef}>
+              {messages.length === 0 && (
+                <div className="message bot">
+                  <div className="message-bubble">
+                    안녕하세요! 라포와 함께 현재 기분이나 상태에 대해 편안하게 이야기해보세요. 요즘 어떤 점이 가장 힘드셨나요?
+                  </div>
+                </div>
+              )}
+              {messages.map((m, i) => (
+                <div
+                  key={i}
+                  className={`message ${m.role}`}
+                >
+                  <div className="message-bubble">
+                    {m.text}
+                  </div>
+                </div>
+              ))}
+              {botTyping && <TypingBubble />}
+              <div ref={endRef} />
+            </div>
+
+            <div className="input-area">
+              <div className="input-container">
+                <textarea
+                  className="input-field"
+                  placeholder="자유롭게 답변해 주세요..."
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  disabled={botTyping}
+                  rows={1}
+                />
+                <div className="button-row">
+                  <button
+                    onClick={sendMessage}
+                    className="send-button"
+                    disabled={botTyping || !input.trim()}
+                  >
+                    전송
+                  </button>
+                  <button
+                    onClick={finalize}
+                    className="end-button"
+                  >
+                    완료
+                  </button>
+                </div>
+              </div>
+              <div className="help-text">
+                모든 대화는 익명으로 처리되며, 세션 종료 시 안전하게 삭제됩니다.<br/>
+                응급상황시 ☎️ 1393 (자살예방상담전화) 또는 112에 연락하세요.
+              </div>
+            </div>
+          </div>
         </>
       )}
 
       {report && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">사전 점검 리포트</h2>
+        <>
+          <div className="header">
+            <div className="logo">라포</div>
+            <div className="subtitle">사전 점검 완료</div>
+          </div>
 
-          <div className="border rounded p-4 bg-white text-sm space-y-3">
-            <div className="mb-2">
-              핵심 이슈: {report.summary.top_issues?.join(", ") || "없음"}
-            </div>
+          <div className="chat-card results-mode">
+            <div className="results-screen">
+              <h2 className="results-title">사전 점검 결과</h2>
 
-            <div className="mb-1">우울 {report.summary.scores.depression}</div>
-            <Bar value={report.summary.scores.depression} />
-            <div className="mb-1 mt-2">불안 {report.summary.scores.anxiety}</div>
-            <Bar value={report.summary.scores.anxiety} />
-            <div className="mb-1 mt-2">스트레스 {report.summary.scores.stress}</div>
-            <Bar value={report.summary.scores.stress} />
+              {report.summary.conversation_summary && (
+                <div style={{ background: '#f6f8fa', border: '1px solid #e1e4e8', borderRadius: '12px', padding: '20px', marginBottom: '24px', textAlign: 'left' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '12px', color: '#24292e', fontSize: '1rem' }}>
+                    💬 대화 요약
+                  </div>
+                  <p style={{ color: '#586069', lineHeight: 1.6, margin: 0 }}>
+                    {report.summary.conversation_summary}
+                  </p>
+                </div>
+              )}
 
-            {report.summary.risk.level >= 60 && (
-              <div className={`mt-4 p-3 rounded text-sm ${
-                report.summary.risk.level >= 80 
-                  ? 'bg-red-100 text-red-700' 
-                  : 'bg-amber-100 text-amber-700'}`}>
-                {report.summary.risk.level >= 80 ? '고위험 신호가 감지되었습니다. ' : '주의가 필요한 신호가 감지되었습니다. '}
-                {report.safety_notice}
+              <div className="metrics">
+                <div className="metric">
+                  <div className="metric-name">우울 지수</div>
+                  <div className="metric-value">{report.summary.scores.depression} / 100</div>
+                  <Bar value={report.summary.scores.depression} type="depression" />
+                </div>
+
+                <div className="metric">
+                  <div className="metric-name">불안 지수</div>
+                  <div className="metric-value">{report.summary.scores.anxiety} / 100</div>
+                  <Bar value={report.summary.scores.anxiety} type="anxiety" />
+                </div>
+
+                <div className="metric">
+                  <div className="metric-name">스트레스 지수</div>
+                  <div className="metric-value">{report.summary.scores.stress} / 100</div>
+                  <Bar value={report.summary.scores.stress} type="stress" />
+                </div>
               </div>
-            )}
 
-            {report.details.highlights?.length > 0 && (
-              <div className="mb-2">
-                <div className="font-medium">대화 하이라이트</div>
-                <ul className="list-disc ml-5">
-                  {report.details.highlights.map((h: string, i: number) => (
-                    <li key={i}>{h}</li>
-                  ))}
-                </ul>
+              {report.summary.risk.level >= 60 && (
+                <div className="warning-box">
+                  <strong>⚠️ 주의사항</strong><br/>
+                  {report.summary.risk.level >= 80 ? '고위험 신호가 감지되었습니다. ' : '주의가 필요한 신호가 감지되었습니다. '}
+                  {report.safety_notice}
+                </div>
+              )}
+
+              {report.details.highlights && report.details.highlights.length > 0 && (
+                <div style={{ color: '#586069', marginBottom: '24px', lineHeight: 1.6, textAlign: 'left' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '12px', color: '#24292e' }}>대화 하이라이트</div>
+                  <ul style={{ listStyle: 'disc', marginLeft: '20px' }}>
+                    {report.details.highlights.map((h: string, i: number) => (
+                      <li key={i} style={{ marginBottom: '4px' }}>{h}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {report.summary.top_issues && report.summary.top_issues.length > 0 && (
+                <div style={{ color: '#586069', marginBottom: '24px', lineHeight: 1.6, textAlign: 'left' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '12px', color: '#24292e' }}>핵심 이슈</div>
+                  <p>{report.summary.top_issues.join(', ')}</p>
+                </div>
+              )}
+
+              <p style={{ color: '#586069', marginBottom: '24px', lineHeight: 1.6 }}>
+                본 결과는 상담 전 참고용 사전 점검 자료이며, 의학적 진단이나 치료를 대체하지 않습니다.
+              </p>
+
+              <button onClick={resetAll} className="restart-button">
+                처음 화면으로
+              </button>
+
+              <div style={{ marginTop: '32px', borderTop: '1px solid #e1e4e8', paddingTop: '24px', fontSize: '0.9rem', textAlign: 'left' }}>
+                <div style={{ fontWeight: 600, marginBottom: '12px', color: '#24292e' }}>연결 가능한 도움</div>
+                <p style={{ color: '#586069', marginBottom: '16px' }}>거주 지역의 정신건강복지센터/상담기관 정보를 제공할 예정입니다.</p>
+                <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                  <a
+                    style={{
+                      border: '2px solid #e1e4e8',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      textDecoration: 'none',
+                      color: '#586069',
+                      fontSize: '0.85rem',
+                      transition: 'all 0.2s ease'
+                    }}
+                    target="_blank"
+                    href="https://www.data.go.kr/data/3049990/fileData.do"
+                    rel="noreferrer"
+                  >
+                    기관 검색(공공데이터)
+                  </a>
+                  <a
+                    style={{
+                      border: '2px solid #e1e4e8',
+                      padding: '8px 12px',
+                      borderRadius: '8px',
+                      textDecoration: 'none',
+                      color: '#586069',
+                      fontSize: '0.85rem',
+                      transition: 'all 0.2s ease'
+                    }}
+                    href="tel:1393"
+                  >
+                    1393 전화하기
+                  </a>
+                </div>
               </div>
-            )}
-            <div className="text-gray-500">{report.details.disclaimer}</div>
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <button onClick={resetAll} className="border rounded px-4 py-2">
-              처음 화면으로
-            </button>
-            {/* <button
-              onClick={() => {
-                const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'rapport_report.json'; a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="border rounded px-4 py-2"
-            >
-              리포트 저장(JSON)
-            </button> */}
-          </div>
-
-          <div className="mt-4 border-t pt-3 text-sm">
-            <div className="font-medium mb-1">연결 가능한 도움</div>
-            <p className="text-gray-600 mb-2">거주 지역의 정신건강복지센터/상담기관 정보를 제공할 예정입니다.</p>
-            <div className="flex gap-2">
-              <a className="border px-3 py-1 rounded" target="_blank" href="https://www.data.go.kr/data/3049990/fileData.do" rel="noreferrer">기관 검색(공공데이터)</a>
-              <a className="border px-3 py-1 rounded" href="tel:1393">1393 전화하기</a>
             </div>
           </div>
-        </div>
+        </>
       )}
-    </main>
+    </div>
   );
 }

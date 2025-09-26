@@ -111,6 +111,9 @@ SESSIONS: Dict[str, Dict] = {}
 class CreateSessionReq(BaseModel):
     consent: bool
     region: str | None = None
+    gender: str | None = None
+    ageGroup: str | None = None
+    occupation: str | None = None
 
 class CreateSessionRes(BaseModel):
     session_id: str
@@ -194,11 +197,25 @@ def get_fallback_response(reason: str) -> str:
 # -----------------------------------------------------------------------------
 # LLM 호출 (LM Studio OpenAI 호환 서버)
 # -----------------------------------------------------------------------------
-def llm_reply(history: List[Dict[str, str]]) -> str:
+def llm_reply(history: List[Dict[str, str]], user_profile: Dict[str, str] = None) -> str:
     """
     history: [{"role":"user"|"assistant","content":"..."}]
+    user_profile: {"gender": "...", "ageGroup": "...", "occupation": "..."}
     """
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # 사용자 프로필 정보를 시스템 프롬프트에 추가
+    system_prompt = SYSTEM_PROMPT
+    if user_profile:
+        profile_context = "\n\n## 내담자 배경 정보"
+        if user_profile.get("gender"):
+            profile_context += f"\n- 성별: {user_profile['gender']}"
+        if user_profile.get("ageGroup"):
+            profile_context += f"\n- 연령대: {user_profile['ageGroup']}"
+        if user_profile.get("occupation"):
+            profile_context += f"\n- 직업: {user_profile['occupation']}"
+        profile_context += "\n\n위 배경 정보를 고려하여 내담자의 상황을 더 깊이 이해하고 적절한 질문을 해주세요."
+        system_prompt += profile_context
+
+    messages = [{"role": "system", "content": system_prompt}]
     messages += history[-6:]  # 최근 6턴으로 줄여서 집중도 향상
 
     try:
@@ -227,6 +244,50 @@ def llm_reply(history: List[Dict[str, str]]) -> str:
         return "말씀해 주셔서 감사합니다. 지금 느끼고 계신 감정에 대해 좀 더 자세히 이야기해 주실 수 있을까요?"
 
 
+def generate_conversation_summary(messages: List[Dict[str, str]]) -> str:
+    """
+    대화 내용을 AI를 사용하여 요약 생성
+    """
+    # 사용자와 AI의 대화만 추출
+    conversation_text = ""
+    for msg in messages:
+        role = "사용자" if msg["role"] == "user" else "상담사"
+        conversation_text += f"{role}: {msg['content']}\n"
+
+    if not conversation_text.strip():
+        return ""
+
+    summary_prompt = f"""다음은 심리상담 사전 점검 대화입니다. 이 대화를 2-3문장으로 요약해주세요.
+
+대화 내용:
+{conversation_text}
+
+요약할 때 다음 사항을 포함해주세요:
+- 사용자가 호소한 주요 문제나 어려움
+- 대화에서 나타난 주요 감정이나 상태
+- 언급된 구체적인 상황이나 배경
+
+간결하고 객관적으로 요약해주세요."""
+
+    try:
+        r = requests.post(
+            f"{OPENAI_BASE}/chat/completions",
+            json={
+                "model": OPENAI_MODEL,
+                "messages": [{"role": "user", "content": summary_prompt}],
+                "temperature": 0.3,
+                "max_tokens": 200,
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        summary = r.json()["choices"][0]["message"]["content"].strip()
+        return summary
+    except Exception as e:
+        print("Summary generation error:", e)
+        return "대화 요약을 생성하는 중 오류가 발생했습니다."
+
+
 # -----------------------------------------------------------------------------
 # 분석 모듈 (룰 기반)
 # -----------------------------------------------------------------------------
@@ -241,7 +302,13 @@ def create_session(req: CreateSessionReq):
     if not req.consent:
         raise HTTPException(status_code=400, detail="Consent required.")
     sid = str(uuid.uuid4())
-    SESSIONS[sid] = {"messages": [], "region": (req.region or "").strip()}
+    SESSIONS[sid] = {
+        "messages": [],
+        "region": (req.region or "").strip(),
+        "gender": (req.gender or "").strip(),
+        "ageGroup": (req.ageGroup or "").strip(),
+        "occupation": (req.occupation or "").strip()
+    }
     return CreateSessionRes(session_id=sid)
 
 
@@ -256,10 +323,17 @@ def chat(req: ChatReq):
     # 1) 사용자 메시지 저장
     sess["messages"].append({"role": "user", "content": user_text})
 
-    # 2) LLM 응답 생성
-    assistant_text = llm_reply(sess["messages"])
+    # 2) 사용자 프로필 정보 추출
+    user_profile = {
+        "gender": sess.get("gender", ""),
+        "ageGroup": sess.get("ageGroup", ""),
+        "occupation": sess.get("occupation", "")
+    }
 
-    # 3) assistant 메시지 저장
+    # 3) LLM 응답 생성
+    assistant_text = llm_reply(sess["messages"], user_profile)
+
+    # 4) assistant 메시지 저장
     sess["messages"].append({"role": "assistant", "content": assistant_text})
 
     return ChatRes(assistant=assistant_text)
@@ -278,8 +352,12 @@ def finalize(req: FinalizeReq):
 
     analysis = analyze_messages(user_msgs)
 
+    # AI를 사용한 대화 요약 생성
+    conversation_summary = generate_conversation_summary(sess["messages"])
+
     report = {
         "summary": {
+            "conversation_summary": conversation_summary,
             "top_issues": analysis["top_themes"],
             "scores": analysis["scores"],
             "risk": analysis["risk"],
@@ -296,7 +374,11 @@ def finalize(req: FinalizeReq):
         ),
     }
 
-    # 세션 정리(원문 저장하지 않음)
-    del SESSIONS[req.session_id]
+    # 리포트 반환
+    response = {"report": report}
 
-    return {"report": report}
+    # 세션 정리(원문 저장하지 않음)
+    if req.session_id in SESSIONS:
+        del SESSIONS[req.session_id]
+
+    return response
