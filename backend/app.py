@@ -255,7 +255,7 @@ def generate_conversation_summary(messages: List[Dict[str, str]]) -> str:
     # 사용자와 AI의 대화만 추출
     conversation_text = ""
     for msg in messages:
-        role = "사용자" if msg["role"] == "user" else "상담사"
+        role = "사용자" if msg["role"] == "user" else "챗봇"
         conversation_text += f"{role}: {msg['content']}\n"
 
     if not conversation_text.strip():
@@ -276,6 +276,10 @@ def generate_conversation_summary(messages: List[Dict[str, str]]) -> str:
     try:
         r = requests.post(
             f"{OPENAI_BASE}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                "Content-Type": "application/json"
+            },
             json={
                 "model": OPENAI_MODEL,
                 "messages": [{"role": "user", "content": summary_prompt}],
