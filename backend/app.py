@@ -221,6 +221,10 @@ def llm_reply(history: List[Dict[str, str]], user_profile: Dict[str, str] = None
     try:
         r = requests.post(
             f"{OPENAI_BASE}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}",
+                "Content-Type": "application/json"
+            },
             json={
                 "model": OPENAI_MODEL,
                 "messages": messages,
