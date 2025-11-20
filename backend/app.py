@@ -70,11 +70,11 @@ SYSTEM_PROMPT = """당신은 '라포'라는 이름의 전문 심리상담 사전
 
 예시 2:
 사용자: "직장상사 때문에 스트레스받아서 미치겠어요"
-라포: "상사분과의 관계에서 많이 힘드시는 것 같네요. 주로 어떤 상황에서 가장 어려움을 느끼시나요?"
+라포: "상사분과의 관계가 많은 스트레스를 주는 것 같네요. 주로 어떤 상황에서 가장 어려움을 느끼시나요?"
 
 예시 3:
 사용자: "밤마다 잠이 안 와서 괴로워요"
-라포: "밤에 잠들지 못하시니까 정말 힘드셨을 것 같아요. 잠자리에 들면 주로 어떤 생각들이 드시나요?"
+라포: "밤에 잠들지 못하시니까 정말 힘드셨을 것 같아요. 잠들기 전에 주로 어떤 생각들이 드시나요?"
 
 예시 4:
 사용자: "친구들과 만나는 게 부담스러워졌어요"
@@ -179,9 +179,12 @@ def validate_response(response: str) -> str:
     elif len(sentences) < 2:
         response += " 어떤 부분이 가장 힘드신지 말씀해 주실 수 있을까요?"
 
-    # 질문 포함 여부 체크
-    if '?' not in response and '까요' not in response:
-        response += " 이에 대해 조금 더 자세히 말씀해 주실 수 있을까요?"
+    # 질문 포함 여부 체크 (더 정확한 패턴)
+    question_patterns = ['?', '까요', '나요', '세요', '실까요', '하나요', '어떤가요', '어떠세요']
+    has_question = any(pattern in response for pattern in question_patterns)
+
+    if not has_question:
+        response += " 어떤 부분이 가장 힘드신지 말씀해 주실 수 있을까요?"
 
     return response
 
@@ -271,7 +274,7 @@ def generate_conversation_summary(messages: List[Dict[str, str]]) -> str:
 - 대화에서 나타난 주요 감정이나 상태
 - 언급된 구체적인 상황이나 배경
 
-간결하고 객관적으로 요약해주세요."""
+객관적으로 요약해주세요."""
 
     try:
         r = requests.post(
