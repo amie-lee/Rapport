@@ -61,3 +61,4 @@ out/
 .env*.local
 CLAUDE.md
 backend/__pycache__/
+backend/.env
