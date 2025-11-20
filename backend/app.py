@@ -20,6 +20,9 @@ load_dotenv()
 # 프론트 도메인(CORS)
 _front = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 API_ORIGINS = [o.strip() for o in _front.split(",") if o.strip()]
+# Vercel 배포 시 모든 오리진 허용 (같은 도메인에서 호출되므로)
+if os.getenv("VERCEL"):
+    API_ORIGINS = ["*"]
 
 # LM Studio(OpenAI 호환) 서버 설정
 OPENAI_BASE = os.getenv("OPENAI_BASE", "http://localhost:1234/v1")
