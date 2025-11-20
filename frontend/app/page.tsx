@@ -52,6 +52,15 @@ function TypingBubble() {
   );
 }
 
+function LoadingOverlay({ message }: { message: string }) {
+  return (
+    <div className="loading-overlay">
+      <div className="loading-spinner"></div>
+      <div className="loading-message">{message}</div>
+    </div>
+  );
+}
+
 export default function Home() {
   // ----- state -----
   const [consented, setConsented] = useState(false);
@@ -66,6 +75,7 @@ export default function Home() {
   const [botTyping, setBotTyping] = useState(false);
   const [messageCount, setMessageCount] = useState(0);
   const [progressPercentage, setProgressPercentage] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   
   const endRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -86,6 +96,7 @@ export default function Home() {
   
   // ----- handlers -----
   async function startSession() {
+    setIsLoading(true);
     try {
       const res = await fetch(`${API}/session`, {
         method: "POST",
@@ -107,6 +118,8 @@ export default function Home() {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "세션 생성 중 오류";
       alert(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -144,6 +157,7 @@ export default function Home() {
 
   async function finalize() {
     if (!sessionId) return;
+    setIsLoading(true);
     try {
       const res = await fetch(`${API}/finalize`, {
         method: "POST",
@@ -154,6 +168,8 @@ export default function Home() {
       setReport(data.report);
     } catch {
       alert("리포트 생성 오류");
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -189,6 +205,7 @@ export default function Home() {
   if (!consented) {
     return (
       <div className="consent-container">
+        {isLoading && <LoadingOverlay message="세션을 생성하고 있습니다..." />}
         <div className="header">
           <div className="logo">라포</div>
           <div className="subtitle">AI 기반 심리 상태 사전 점검</div>
@@ -266,9 +283,9 @@ export default function Home() {
           <button
             onClick={startSession}
             className="consent-button"
-            disabled={!gender || !ageGroup || !occupation}
+            disabled={!gender || !ageGroup || !occupation || isLoading}
           >
-            동의하고 시작하기
+            {isLoading ? "세션 생성 중..." : "동의하고 시작하기"}
           </button>
         </div>
       </div>
@@ -277,6 +294,7 @@ export default function Home() {
 
   return (
     <div className="container">
+      {isLoading && <LoadingOverlay message="결과를 분석하고 있습니다..." />}
       {!report && (
         <>
           <div className="header">
@@ -332,15 +350,16 @@ export default function Home() {
                   <button
                     onClick={sendMessage}
                     className="send-button"
-                    disabled={botTyping || !input.trim()}
+                    disabled={botTyping || !input.trim() || isLoading}
                   >
                     전송
                   </button>
                   <button
                     onClick={finalize}
                     className="end-button"
+                    disabled={isLoading || botTyping}
                   >
-                    완료
+                    {isLoading ? "분석 중..." : "완료"}
                   </button>
                 </div>
               </div>
