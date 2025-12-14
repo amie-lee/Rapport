@@ -305,7 +305,10 @@ def generate_conversation_summary(messages: List[Dict[str, str]]) -> str:
 # -----------------------------------------------------------------------------
 # 분석 모듈 (룰 기반)
 # -----------------------------------------------------------------------------
-from backend.analyzer import analyze_messages  # Vercel 배포용 절대 경로
+try:
+    from backend.analyzer import analyze_messages  # Vercel 배포용
+except ModuleNotFoundError:
+    from analyzer import analyze_messages  # 로컬 개발용
 
 
 # -----------------------------------------------------------------------------
