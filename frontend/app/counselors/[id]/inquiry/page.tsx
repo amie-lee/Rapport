@@ -4,7 +4,7 @@ import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { counselors } from "../../data";
 
-type Props = { params: { id: string } };
+type Props = { params: Promise<{ id: string }> };
 
 export default function InquiryPage({ params }: Props) {
   const resolvedParams = use(params);
