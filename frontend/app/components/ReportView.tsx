@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ReportData } from "../types";
 import { Bar } from "./Bar";
 
@@ -73,11 +74,14 @@ export function ReportView({ report, onRestart }: ReportViewProps) {
           본 결과는 상담 전 참고용 사전 점검 자료이며, 의학적 진단이나 치료를 대체하지 않습니다.
         </p>
 
-        <button onClick={onRestart} className="restart-button">
-          처음 화면으로
-        </button>
+        <div style={{ gap: "1rem", display: "flex", justifyContent: "center" }}>
+          <button onClick={onRestart} className="restart-button">
+            처음 화면으로
+          </button>
+          <Link href="/counselors" className="link-button">나에게 맞는 상담사 찾기</Link>
+        </div>
 
-        <div className="resource-block">
+        {/* <div className="resource-block">
           <div className="resource-title">연결 가능한 도움</div>
           <p className="info-body">거주 지역의 정신건강복지센터/상담기관 정보를 제공할 예정입니다.</p>
           <div className="resource-links">
@@ -96,7 +100,7 @@ export function ReportView({ report, onRestart }: ReportViewProps) {
               1393 전화하기
             </a>
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );
