@@ -7,7 +7,7 @@ import { ReportView } from "./components/ReportView";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { Message, ReportData } from "./types";
 
-const API = "/api";
+const API = process.env.NEXT_PUBLIC_API_BASE || "";
 
 export default function Home() {
   // ----- state -----
