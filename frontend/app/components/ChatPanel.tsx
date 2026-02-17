@@ -11,8 +11,8 @@ type ChatPanelProps = {
   onFinalize: () => void;
   botTyping: boolean;
   isLoading: boolean;
-  listRef: RefObject<HTMLDivElement>;
-  endRef: RefObject<HTMLDivElement>;
+  listRef: RefObject<HTMLDivElement | null>;
+  endRef: RefObject<HTMLDivElement | null>;
   progressPercentage: number;
   messageCount: number;
 };
